@@ -147,7 +147,23 @@ Get-ChildItem $moltenDir -Recurse -Filter '*.js' | ForEach-Object {
 }
 Write-Host "[+] molten AI 界面:已汉化 $patched 个 bundle"
 
-# ---------- 4. 校验 ----------
+# ---------- 4. 清理 Chromium/V8 缓存,强制重新编译已打补丁的 bundle ----------
+# CachedData 缓存了 V8 编译产物,Cache/Code Cache 缓存了网络/JS 资源;
+# 不清除会导致重启后仍显示旧的英文 bundle。
+$running = Get-Process Cursor -ErrorAction SilentlyContinue
+if ($running) {
+    Write-Host '[!] 检测到 Cursor 正在运行,缓存将在下次启动时自动刷新'
+    Write-Host '    建议:完全退出 Cursor 后手动删除以下目录再启动:'
+    Write-Host "    %APPDATA%\Cursor\Code Cache、CachedData、Cache、GPUCache"
+} else {
+    foreach ($cd in 'Code Cache', 'CachedData', 'Cache', 'GPUCache', 'DawnGraphiteCache', 'DawnWebGPUCache') {
+        $p = Join-Path "$env:APPDATA\Cursor" $cd
+        if (Test-Path $p) { Remove-Item $p -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    Write-Host '[+] 已清理浏览器/V8 缓存目录'
+}
+
+# ---------- 5. 校验 ----------
 $ok = $true
 $chk = [IO.File]::ReadAllText($nlsDst, $utf8)
 if (-not $chk.Contains('更多操作...')) { $ok = $false; Write-Host '[!] 校验失败: nls.messages.json 未汉化' }
