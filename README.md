@@ -3,7 +3,7 @@
 非官方简体中文补丁，为 **Cursor**（Windows 桌面端）提供尽可能完整的界面中文翻译，覆盖双层本地化体系：
 
 - **Workbench 内核层**（VS Code NLS 消息数组）：**13,625 条全部汉化**（`nls.messages.zh.json`）——覆盖顶部菜单栏、命令面板、编辑器、通知、对话框等所有 VS Code 系 UI；其中 11,559 条来自官方 VS Code 简体中文语言包（1.131.0），889 条英文文本匹配复用、1,176 条 Cursor 特有字符串为手工补译
-- **Agent/AI 界面层**（Cursor 专有 UI）：**2,049 条 UI 文案**精确替换（`molten-zh-map.json`），命中约 147 个 bundle——覆盖聊天输入、Agent 窗口、云 Agent、终端、画布、设置页、账单等。真实加载点包括 `out\vs\workbench\workbench.glass.main.js`（内置 Agents Window，47MB）、`workbench.desktop.main.js`（IDE 窗口，40MB）、`workbench.anysphere-ui-automations.js` 及 `molten\dist\**\*.js`；Agents 窗口菜单（文件/编辑/视图/帮助）在 `molten\dist\electron-main\host.cjs` 单独处理
+- **Agent/AI 界面层**（Cursor 专有 UI）：**13,040 条英中对照**精确替换（`molten-zh-map.json`），命中 336 个 bundle、约 18 万处中文字符——覆盖聊天输入、Agent 窗口、设置页全部板块、云 Agent、终端、画布、账单等。真实加载点包括 `out\vs\workbench\workbench.glass.main.js`（内置 Agents Window，49MB）、`workbench.desktop.main.js`（IDE 窗口，41MB）、`workbench.anysphere-ui-automations.js` 及 `molten\dist\**\*.js`；Agents 窗口菜单（文件/编辑/视图/帮助）在 `molten\dist\electron-main\host.cjs` 单独处理
 - 一键安装 / 一键还原，自动备份原始文件（`.zhorig`）
 
 ## 使用方法
@@ -38,7 +38,7 @@ powershell -File apply-zh.ps1 -InstallDir "D:\Cursor"
 | 命令面板命令名 | ✅ |
 | 编辑器、终端、通知、对话框等 workbench UI | ✅ |
 | Agents 窗口顶部菜单（文件/编辑/视图/帮助） | ✅ host.cjs 专项处理 |
-| AI 聊天/Agent 界面文案（按钮、标题、占位符、空状态、设置、云 Agent、终端、画布） | ✅ 2,049 条 |
+| AI 聊天/Agent 界面文案（按钮、标题、占位符、空状态、**设置页全部板块**、云 Agent、终端、画布） | ✅ 13,040 条 |
 | AI 界面低频/长文案 | 部分仍为英文（字面量替换按字典进行，可扩充 `molten-zh-map.json`） |
 | 专有名词 `Cursor`、`MCP`、`Agent`（命令 ID）、模型名等 | 刻意保留英文 |
 | 服务端返回内容（登录态、账单、报错信息等） | 无法汉化 |
