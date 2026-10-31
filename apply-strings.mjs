@@ -20,6 +20,12 @@ const PROPS = [
   'columnHeader', 'allLabel', 'nameColumn', 'typeColumn', 'headerLabel', 'navLabel', 'tabLabel',
   'buttonText', 'confirmText', 'cancelText', 'badgeText', 'ctaText', 'summary', 'hint',
   'aria-label', 'text', 'children',
+  'heading', 'subheading', 'hintText', 'helperText', 'tooltipText', 'placeholderText',
+  'settings', 'collectionLabel', 'projectAgentsSectionLabel', 'sectionLabel', 'groupLabel',
+  'actionLabel', 'itemLabel', 'optionLabel', 'sublabel', 'menuLabel', 'buttonLabel',
+  'linkLabel', 'statusText', 'notice', 'bannerText', 'emptyStateTitle', 'emptyStateText',
+  'footerText', 'accessibleName', 'repositoriesColumn', 'appsColumn', 'scopeColumn',
+  'columnLabel', 'textLabel',
   // 设置导航对象键(如 {general:"General",chat:"Agents"})
   'general', 'appearance', 'plan-usage', 'chat', 'browser', 'git-prs', 'models', 'voice',
   'indexing', 'mcp', 'hooks', 'beta', 'network', 'background-composer', 'rules', 'plugins',
