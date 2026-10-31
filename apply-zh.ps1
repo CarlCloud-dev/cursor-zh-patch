@@ -123,8 +123,9 @@ foreach ($clp in (Get-ChildItem "$env:APPDATA\Cursor\clp\*.zh-cn\*\nls.messages.
 #   molten\dist\*.js|.cjs        - 独立 Molten 窗口(canvas/browser/tray/host)
 #   out\vs\workbench\*.js        - Agent 智能体窗口与 IDE 内嵌 Agent UI
 #     (workbench.glass.main.js = 内置 Agents Window,~47MB,Agent 文案主要在此)
-Write-Host '[*] 替换字典: molten-zh-map.json'
+Write-Host '[*] 替换字典: molten-zh-map.json + prop-zh-map.json'
 node (Join-Path $pkg 'apply-strings.mjs') (Join-Path $pkg 'molten-zh-map.json') `
+    (Join-Path $pkg 'prop-zh-map.json') `
     (Join-Path $appDir 'molten\dist') `
     (Join-Path $appDir 'out\vs\workbench') 2>&1 | ForEach-Object {
         if ($_ -match 'scanned=(\d+) patched=(\d+) replayed=(\d+)') {

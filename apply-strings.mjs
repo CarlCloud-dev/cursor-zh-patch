@@ -1,14 +1,35 @@
-// 按 molten-zh-map.json 对目标 JS 文件做带引号字符串字面量替换。
-// 用法: node apply-strings.mjs <dict.json> <file-or-dir> [file-or-dir ...]
-// 规则: 若存在 .zhorig 备份,先还原再重放(幂等); 无备份则先备份再替换。
+// 两遍替换:
+//  pass1: molten-zh-map.json  -> 裸带引号字面量(仅限多词短语 key,安全)
+//  pass2: prop-zh-map.json    -> 仅当值出现在展示型属性名后时替换(单词级 key 也安全)
+// 用法: node apply-strings.mjs <phraseDict> <propDict> <file-or-dir> [...]
 import fs from 'fs';
 import path from 'path';
 
-const [dictPath, ...targets] = process.argv.slice(2);
-const dict = JSON.parse(fs.readFileSync(dictPath, 'utf8'));
-const keys = Object.keys(dict).filter(k => !/["'`\\]/.test(k));
+const [phrasePath, propPath, ...targets] = process.argv.slice(2);
+const phrase = JSON.parse(fs.readFileSync(phrasePath, 'utf8'));
+const prop = JSON.parse(fs.readFileSync(propPath, 'utf8'));
+
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const re = new RegExp('(["\'`])(' + keys.map(esc).join('|') + ')\\1', 'g');
+const pk = Object.keys(phrase).filter(k => !/["'`\\]/.test(k));
+const rePhrase = pk.length ? new RegExp('(["\'`])(' + pk.map(esc).join('|') + ')\\1', 'g') : null;
+
+// 展示型属性名 + Cursor 设置导航 id 键
+const PROPS = [
+  'label', 'title', 'description', 'placeholder', 'tooltip', 'header', 'caption', 'subtitle',
+  'pageTitle', 'emptyLabel', 'emptyText', 'ariaLabel', 'accessibleLabel', 'containerAriaLabel',
+  'columnHeader', 'allLabel', 'nameColumn', 'typeColumn', 'headerLabel', 'navLabel', 'tabLabel',
+  'buttonText', 'confirmText', 'cancelText', 'badgeText', 'ctaText', 'summary', 'hint',
+  'aria-label', 'text', 'children',
+  // 设置导航对象键(如 {general:"General",chat:"Agents"})
+  'general', 'appearance', 'plan-usage', 'chat', 'browser', 'git-prs', 'models', 'voice',
+  'indexing', 'mcp', 'hooks', 'beta', 'network', 'background-composer', 'rules', 'plugins',
+  'customize', 'docs', 'contact', 'back', 'fun', 'files', 'projects', 'repositories',
+  'automations', 'marketplace',
+];
+const qk = Object.keys(prop).filter(k => !/["'`\\]/.test(k));
+const reProp = qk.length
+  ? new RegExp('(["\']?(?:' + PROPS.map(esc).join('|') + ')["\']?\\s*:\\s*)(["\'`])(' + qk.map(esc).join('|') + ')\\2', 'g')
+  : null;
 
 function* walk(p) {
   const st = fs.statSync(p);
@@ -23,11 +44,13 @@ for (const t of targets) {
     scanned++;
     const bak = f + '.zhorig';
     if (fs.existsSync(bak)) { fs.copyFileSync(bak, f); restored++; }
-    const s = fs.readFileSync(f, 'utf8');
-    const out = s.replace(re, (m, q, k) => q + dict[k] + q);
-    if (out !== s) {
+    let s = fs.readFileSync(f, 'utf8');
+    const orig = s;
+    if (rePhrase) s = s.replace(rePhrase, (m, q, k) => q + phrase[k] + q);
+    if (reProp) s = s.replace(reProp, (m, pre, q, k) => pre + q + prop[k] + q);
+    if (s !== orig) {
       if (!fs.existsSync(bak)) fs.copyFileSync(f, bak);
-      fs.writeFileSync(f, out, 'utf8');
+      fs.writeFileSync(f, s, 'utf8');
       patched++;
     }
   }
