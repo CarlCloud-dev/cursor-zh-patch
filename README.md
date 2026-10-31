@@ -11,10 +11,13 @@
 1. 解压到任意位置（桌面、U 盘均可）。
 2. 双击运行 **`一键汉化.bat`**，脚本会自动：
    1. 探测 Cursor 安装目录
-   2. 用 `nls.messages.zh.json` 替换 `resources\app\out\nls.messages.json`（先备份 `.zhorig`）
-   3. 按 `molten-zh-map.json` 对 `resources\app\molten\dist\**\*.js` 中带引号的 UI 字面量做精确替换（每个改动文件先备份 `.zhorig`）
+   2. 用 `nls.messages.zh.json` 替换 `resources\app\out\nls.messages.json`（兜底，先备份 `.zhorig`）
+   3. 将 `~\.cursor\argv.json` 的 `locale` 设为 `zh-cn`（**关键步骤**：VS Code 1.128 在 `locale=en` 时不加载 NLS 文件，只用代码内嵌英文）
+   4. 若已安装官方 `ms-ceintl.vscode-language-pack-zh-hans` 扩展：把缺失键的补译注入其 `main.i18n.json`，并刷新 `%APPDATA%\Cursor\clp` 语言包缓存为全量中文版
+   5. 按 `molten-zh-map.json` 对 `resources\app\molten\dist\**\*.js` 中带引号的 UI 字面量做精确替换（每个改动文件先备份 `.zhorig`）
 3. **完全退出并重启 Cursor**（关闭所有窗口重新打开）。
    - 顶部菜单栏（文件/编辑/选择/查看/转到/运行/终端/帮助）由 Electron 主进程在启动时读取 NLS 文件，`Developer: Reload Window` 只重载渲染进程、不会刷新菜单。
+   - 若 AI 界面仍有英文残留，删除 `%APPDATA%\Cursor\Code Cache` 与 `CachedData` 目录后再重启（V8 代码缓存）。
 
 自动探测失败时手动指定安装目录：
 
@@ -53,12 +56,15 @@ powershell -File apply-zh.ps1 -InstallDir "D:\Cursor"
 
 Cursor 有两层本地化体系：
 
-**1. Workbench 内核层**（`resources\app\out\nls.messages.json`）
+**1. Workbench 内核层**（NLS 消息数组）
 
-Cursor 基于 VS Code，菜单栏/命令面板/编辑器等字符串按**索引**从全局 NLS 消息数组取值（如 `E(2166,null)`）。补丁用等长中文数组（13,625 条，索引一一对应）整体替换该文件：
+Cursor 基于 VS Code，菜单栏/命令面板/编辑器等字符串按**索引**从 NLS 消息数组取值（如 `E(2166,null)`）。VS Code 1.128 的加载规则：
 
-- 渲染进程在窗口加载时读取 → 命令面板、编辑器 UI 变中文
-- Electron 主进程在启动时读取构建应用菜单 → 顶部菜单栏变中文（需完全重启）
+- `argv.json` 的 `locale` 为 `en` 时 → 直接使用代码内嵌英文，**不加载任何消息文件**
+- `locale` 为 `zh-cn` 且安装了 zh-hans 语言包时 → 从 `%APPDATA%\Cursor\clp` 缓存加载该包构建的中文消息数组
+- `locale` 为 `zh-cn` 且无语言包时 → 回退到 `resources\app\out\nls.messages.json`
+
+因此补丁三管齐下：替换默认消息文件（兜底）、设 `locale=zh-cn`、向已装语言包注入补译并刷新其缓存。无论是否装有官方语言包扩展均可生效；装了包则覆盖率更高且可通过「Configure Display Language」正常切换语言。
 
 **2. Molten AI 界面层**（`resources\app\molten\dist\**\*.js`）
 

@@ -43,28 +43,89 @@ function Find-Cursor {
 
 $root = Find-Cursor
 $appDir = Join-Path $root 'resources\app'
+$outDir = Join-Path $appDir 'out'
 Write-Host "[*] Cursor 安装目录: $root"
 
+function Backup-Once($f) {
+    if ((Test-Path $f) -and -not (Test-Path "$f.zhorig")) { Copy-Item $f "$f.zhorig" }
+}
+
 # ---------- 1. workbench 内核层:替换 nls.messages.json ----------
-$nlsDst = Join-Path $appDir 'out\nls.messages.json'
+# VS Code 1.128: locale=en 时直接回退内嵌英文,不读此文件;
+# 但 locale=zh-cn 且无语言包时会回退读它 -> 替换保证无包用户也能汉化。
+$nlsDst = Join-Path $outDir 'nls.messages.json'
 $nlsSrc = Join-Path $pkg 'nls.messages.zh.json'
 $cur = [IO.File]::ReadAllText($nlsDst, $utf8)
 if ($cur.Contains('更多操作...') -and $cur.Contains('确定')) {
     Write-Host '[=] nls.messages.json 已是中文,跳过'
 } else {
-    if (-not (Test-Path "$nlsDst.zhorig")) { Copy-Item $nlsDst "$nlsDst.zhorig" }
+    Backup-Once $nlsDst
     Copy-Item $nlsSrc $nlsDst -Force
     Write-Host '[+] 已汉化 nls.messages.json (workbench 内核)'
 }
 
-# ---------- 2. molten AI 界面层:按字典替换带引号的 UI 字面量 ----------
+# ---------- 2. 语言包体系:locale=zh-cn + 注入官方包 + 刷新 clp 缓存 ----------
+# 2a. argv.json: locale -> zh-cn
+$argv = "$env:USERPROFILE\.cursor\argv.json"
+if (Test-Path $argv) {
+    $a = [IO.File]::ReadAllText($argv, $utf8)
+    if ($a -match '"locale"\s*:\s*"zh-cn"') {
+        Write-Host '[=] argv.json locale 已是 zh-cn'
+    } else {
+        Backup-Once $argv
+        if ($a -match '"locale"\s*:\s*"[^"]+"') {
+            $a = $a -replace '"locale"\s*:\s*"[^"]+"', '"locale": "zh-cn"'
+        } else {
+            # 无 locale 字段:在最后一个 } 前追加新字段
+            $a = $a -replace '\}\s*$', ",`n`t`"locale`": `"zh-cn`"`n}"
+        }
+        [IO.File]::WriteAllText($argv, $a, $utf8)
+        Write-Host '[+] argv.json: locale -> zh-cn'
+    }
+} else { Write-Host '[=] argv.json 不存在,跳过 locale 设置' }
+
+# 2b. 已安装的官方 zh-hans 语言包:把缺失键的翻译注入 main.i18n.json
+$extGlob = "$env:USERPROFILE\.cursor\extensions\ms-ceintl.vscode-language-pack-zh-hans-*\translations\main.i18n.json"
+foreach ($packFile in (Get-Item $extGlob -ErrorAction SilentlyContinue)) {
+    $pf = $packFile.FullName
+    $packed = [IO.File]::ReadAllText($pf, $utf8)
+    if ($packed.Contains('"vs/code/electron-main/menus"') -and $packed.Contains('智能体宿主')) {
+        Write-Host "[=] 语言包已含补译: $($packFile.Directory.Parent.Parent.Name),跳过"
+        continue
+    }
+    Backup-Once $pf
+    node -e @"
+const fs=require('fs');
+const keys=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));
+const msgs=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
+const pack=JSON.parse(fs.readFileSync(process.argv[3],'utf8'));
+const flat=[];for(const [mod,ks] of keys){for(const k of ks)flat.push([mod,typeof k==='string'?k:k.key]);}
+let added=0;
+for(let i=0;i<flat.length;i++){const[mod,k]=flat[i];
+  if(pack.contents?.[mod]?.[k]!==undefined)continue;
+  if(!pack.contents)pack.contents={};if(!pack.contents[mod])pack.contents[mod]={};
+  pack.contents[mod][k]=msgs[i];added++;}
+fs.writeFileSync(process.argv[3],JSON.stringify(pack,null,'\t'));
+console.log('injected '+added);
+"@ $outDir\nls.keys.json $nlsSrc $pf
+    Write-Host "[+] 已注入补译到语言包: $($packFile.Directory.Parent.Parent.Name)"
+}
+
+# 2c. clp 语言包缓存:替换缓存的 nls.messages.json 为全量中文版
+foreach ($clp in (Get-ChildItem "$env:APPDATA\Cursor\clp\*.zh-cn\*\nls.messages.json" -ErrorAction SilentlyContinue)) {
+    Backup-Once $clp.FullName
+    Copy-Item $nlsSrc $clp.FullName -Force
+    Write-Host "[+] 已刷新 clp 缓存: $($clp.Name)"
+}
+
+# ---------- 3. molten AI 界面层:按字典替换带引号的 UI 字面量 ----------
 Add-Type -AssemblyName System.Web.Extensions
 $dict = (New-Object System.Web.Script.Serialization.JavaScriptSerializer).DeserializeObject(
           [IO.File]::ReadAllText((Join-Path $pkg 'molten-zh-map.json'), $utf8))
 Write-Host "[*] molten 替换字典: $($dict.Count) 条"
 
 $moltenDir = Join-Path $appDir 'molten\dist'
-$totalRepl = 0; $patched = 0
+$patched = 0
 Get-ChildItem $moltenDir -Recurse -Filter '*.js' | ForEach-Object {
     $f = $_.FullName
     $bak = "$f.zhorig"
@@ -79,14 +140,14 @@ Get-ChildItem $moltenDir -Recurse -Filter '*.js' | ForEach-Object {
         }
     }
     if ($s -ne $orig) {
-        if (-not (Test-Path $bak)) { Copy-Item $f $bak }
+        Backup-Once $f
         [IO.File]::WriteAllText($f, $s, $utf8)
         $patched++
     }
 }
 Write-Host "[+] molten AI 界面:已汉化 $patched 个 bundle"
 
-# ---------- 3. 校验 ----------
+# ---------- 4. 校验 ----------
 $ok = $true
 $chk = [IO.File]::ReadAllText($nlsDst, $utf8)
 if (-not $chk.Contains('更多操作...')) { $ok = $false; Write-Host '[!] 校验失败: nls.messages.json 未汉化' }

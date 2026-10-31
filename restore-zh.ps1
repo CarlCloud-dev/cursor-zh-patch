@@ -1,4 +1,4 @@
-﻿# 还原:把 resources\app 下所有 .zhorig 备份盖回原文件
+﻿# 还原:把 .zhorig 备份盖回原文件(覆盖安装目录+用户目录所有补丁点)
 param([string]$InstallDir = "")
 try{[Console]::OutputEncoding=[Text.Encoding]::UTF8}catch{}
 $ErrorActionPreference = 'Stop'
@@ -31,14 +31,20 @@ function Find-Cursor {
     throw '找不到 Cursor 安装目录'
 }
 
-$root = Find-Cursor
-$appDir = Join-Path $root 'resources\app'
-$bak = @(Get-ChildItem $appDir -Recurse -Filter '*.zhorig' -ErrorAction SilentlyContinue)
+$roots = @()
+$roots += (Join-Path (Find-Cursor) 'resources\app')          # 安装目录:nls + molten
+$roots += "$env:APPDATA\Cursor\clp"                          # 语言包缓存
+$roots += "$env:USERPROFILE\.cursor"                         # argv.json + extensions 语言包
+
+$bak = @()
+foreach ($r in $roots) {
+    if (Test-Path $r) { $bak += @(Get-ChildItem $r -Recurse -Filter '*.zhorig' -ErrorAction SilentlyContinue) }
+}
 if (-not $bak) { Write-Host '没有找到 .zhorig 备份文件'; exit }
 foreach ($f in $bak) {
     $orig = $f.FullName -replace '\.zhorig$', ''
     Copy-Item $f.FullName $orig -Force
     Remove-Item $f.FullName -Force
-    Write-Host "已还原 $($f.Name -replace '\.zhorig$','')"
+    Write-Host "已还原 $($f.FullName)"
 }
 Write-Host '还原完成,重启 Cursor 生效'
