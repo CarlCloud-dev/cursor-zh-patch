@@ -3,7 +3,7 @@
 非官方简体中文补丁，为 **Cursor**（Windows 桌面端）提供尽可能完整的界面中文翻译，覆盖双层本地化体系：
 
 - **Workbench 内核层**（VS Code NLS 消息数组）：**13,625 条全部汉化**（`nls.messages.zh.json`）——覆盖顶部菜单栏、命令面板、编辑器、通知、对话框等所有 VS Code 系 UI；其中 11,559 条来自官方 VS Code 简体中文语言包（1.131.0），889 条英文文本匹配复用、1,176 条 Cursor 特有字符串为手工补译
-- **Molten AI 界面层**（Cursor 专有 React UI）：**373 条高价值 UI 文案**精确替换（`molten-zh-map.json`），命中 90 个 bundle、约 1,181 处——覆盖聊天输入占位符、按钮、面板标题、空状态、设置标签等最常见文案
+- **Agent/AI 界面层**（Cursor 专有 UI）：**2,049 条 UI 文案**精确替换（`molten-zh-map.json`），命中约 147 个 bundle——覆盖聊天输入、Agent 窗口、云 Agent、终端、画布、设置页、账单等。真实加载点包括 `out\vs\workbench\workbench.glass.main.js`（内置 Agents Window，47MB）、`workbench.desktop.main.js`（IDE 窗口，40MB）、`workbench.anysphere-ui-automations.js` 及 `molten\dist\**\*.js`；Agents 窗口菜单（文件/编辑/视图/帮助）在 `molten\dist\electron-main\host.cjs` 单独处理
 - 一键安装 / 一键还原，自动备份原始文件（`.zhorig`）
 
 ## 使用方法
@@ -14,10 +14,11 @@
    2. 用 `nls.messages.zh.json` 替换 `resources\app\out\nls.messages.json`（兜底，先备份 `.zhorig`）
    3. 将 `~\.cursor\argv.json` 的 `locale` 设为 `zh-cn`（**关键步骤**：VS Code 1.128 在 `locale=en` 时不加载 NLS 文件，只用代码内嵌英文）
    4. 若已安装官方 `ms-ceintl.vscode-language-pack-zh-hans` 扩展：把缺失键的补译注入其 `main.i18n.json`，并刷新 `%APPDATA%\Cursor\clp` 语言包缓存为全量中文版
-   5. 按 `molten-zh-map.json` 对 `resources\app\molten\dist\**\*.js` 中带引号的 UI 字面量做精确替换（每个改动文件先备份 `.zhorig`）
+   5. 按 `molten-zh-map.json` 对 `resources\app\molten\dist\**` 与 `resources\app\out\vs\workbench\*.js` 中带引号的 UI 字面量做单次正则替换（每个改动文件先备份 `.zhorig`），并对 `molten\dist\electron-main\host.cjs` 的 Agents 窗口菜单模板做专项中文化
+   6. Cursor 未运行时自动清理 `Code Cache`/`CachedData`/`Cache`/`GPUCache` 等目录，强制重新编译已汉化 bundle
 3. **完全退出并重启 Cursor**（关闭所有窗口重新打开）。
-   - 顶部菜单栏（文件/编辑/选择/查看/转到/运行/终端/帮助）由 Electron 主进程在启动时读取 NLS 文件，`Developer: Reload Window` 只重载渲染进程、不会刷新菜单。
-   - 若 AI 界面仍有英文残留，删除 `%APPDATA%\Cursor\Code Cache` 与 `CachedData` 目录后再重启（V8 代码缓存）。
+   - 顶部菜单栏与 Agents 窗口菜单由主进程在启动时加载，`Developer: Reload Window` 只重载渲染进程、不会刷新菜单。
+   - 若打完补丁时 Cursor 正在运行，请先完全退出，再重跑一次 `一键汉化.bat`（或手动删除 `%APPDATA%\Cursor\Code Cache` 与 `CachedData`）后再启动——V8 缓存会继续提供旧英文 bundle。
 
 自动探测失败时手动指定安装目录：
 
@@ -36,7 +37,8 @@ powershell -File apply-zh.ps1 -InstallDir "D:\Cursor"
 | 顶部菜单栏及下拉菜单 | ✅（需完全重启） |
 | 命令面板命令名 | ✅ |
 | 编辑器、终端、通知、对话框等 workbench UI | ✅ |
-| AI 聊天/智能体界面高频文案（按钮、标题、占位符、空状态） | ✅ 373 条核心串 |
+| Agents 窗口顶部菜单（文件/编辑/视图/帮助） | ✅ host.cjs 专项处理 |
+| AI 聊天/Agent 界面文案（按钮、标题、占位符、空状态、设置、云 Agent、终端、画布） | ✅ 2,049 条 |
 | AI 界面低频/长文案 | 部分仍为英文（字面量替换按字典进行，可扩充 `molten-zh-map.json`） |
 | 专有名词 `Cursor`、`MCP`、`Agent`（命令 ID）、模型名等 | 刻意保留英文 |
 | 服务端返回内容（登录态、账单、报错信息等） | 无法汉化 |

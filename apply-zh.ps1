@@ -118,34 +118,39 @@ foreach ($clp in (Get-ChildItem "$env:APPDATA\Cursor\clp\*.zh-cn\*\nls.messages.
     Write-Host "[+] 已刷新 clp 缓存: $($clp.Name)"
 }
 
-# ---------- 3. molten AI 界面层:按字典替换带引号的 UI 字面量 ----------
-Add-Type -AssemblyName System.Web.Extensions
-$dict = (New-Object System.Web.Script.Serialization.JavaScriptSerializer).DeserializeObject(
-          [IO.File]::ReadAllText((Join-Path $pkg 'molten-zh-map.json'), $utf8))
-Write-Host "[*] molten 替换字典: $($dict.Count) 条"
-
-$moltenDir = Join-Path $appDir 'molten\dist'
-$patched = 0
-Get-ChildItem $moltenDir -Recurse -Filter '*.js' | ForEach-Object {
-    $f = $_.FullName
-    $bak = "$f.zhorig"
-    if (Test-Path $bak) { Copy-Item $bak $f -Force }   # 已打过:先还原再重放(字典可能更新)
-    $s = [IO.File]::ReadAllText($f, $utf8)
-    $orig = $s
-    foreach ($en in $dict.Keys) {
-        $zh = $dict[$en]
-        foreach ($q in '"', "'", '`') {
-            $old = "$q$en$q"; $new = "$q$zh$q"
-            if ($s.Contains($old)) { $s = $s.Replace($old, $new) }
-        }
+# ---------- 3. Agent/AI 界面层:按字典替换带引号的 UI 字面量 ----------
+# 覆盖目标:
+#   molten\dist\*.js|.cjs        - 独立 Molten 窗口(canvas/browser/tray/host)
+#   out\vs\workbench\*.js        - Agent 智能体窗口与 IDE 内嵌 Agent UI
+#     (workbench.glass.main.js = 内置 Agents Window,~47MB,Agent 文案主要在此)
+Write-Host '[*] 替换字典: molten-zh-map.json'
+node (Join-Path $pkg 'apply-strings.mjs') (Join-Path $pkg 'molten-zh-map.json') `
+    (Join-Path $appDir 'molten\dist') `
+    (Join-Path $appDir 'out\vs\workbench') 2>&1 | ForEach-Object {
+        if ($_ -match 'scanned=(\d+) patched=(\d+) replayed=(\d+)') {
+            Write-Host "[+] Agent UI:扫描 $($Matches[1]) 个文件,汉化 $($Matches[2]) 个(重放 $($Matches[3]))"
+        } else { Write-Host $_ }
     }
-    if ($s -ne $orig) {
-        Backup-Once $f
-        [IO.File]::WriteAllText($f, $s, $utf8)
-        $patched++
+
+# 3b. host.cjs 菜单模板专项:label:"File"/"View"/"Help" + editMenu role 展开
+$hostCjs = Join-Path $appDir 'molten\dist\electron-main\host.cjs'
+if (Test-Path $hostCjs) {
+    # host.cjs 已由上一步 Node 补丁完成 .zhorig 还原+字典重放,此处仅追加菜单变换
+    $h = [IO.File]::ReadAllText($hostCjs, $utf8)
+    $hOrig = $h
+    $h = $h -replace 'label:\s*"File"', 'label: "文件"'
+    $h = $h -replace 'label:\s*"View"', 'label: "视图"'
+    $h = $h -replace 'label:\s*"Help"', 'label: "帮助"'
+    $h = $h -replace 'label:\s*"Exit"', 'label: "退出"'
+    $h = $h -replace 'label:\s*"Settings"', 'label: "设置"'
+    # Electron 内建 role 菜单默认英文 -> 展开为显式中文子菜单
+    $h = $h -replace '\{\s*role:\s*"editMenu"\s*\}', '{ label: "编辑", submenu: [{ role: "undo", label: "撤销" }, { role: "redo", label: "重做" }, { type: "separator" }, { role: "cut", label: "剪切" }, { role: "copy", label: "复制" }, { role: "paste", label: "粘贴" }, { type: "separator" }, { role: "selectAll", label: "全选" }] }'
+    if ($h -ne $hOrig) {
+        Backup-Once $hostCjs
+        [IO.File]::WriteAllText($hostCjs, $h, $utf8)
+        Write-Host '[+] 已汉化 Agents 窗口菜单(host.cjs)'
     }
 }
-Write-Host "[+] molten AI 界面:已汉化 $patched 个 bundle"
 
 # ---------- 4. 清理 Chromium/V8 缓存,强制重新编译已打补丁的 bundle ----------
 # CachedData 缓存了 V8 编译产物,Cache/Code Cache 缓存了网络/JS 资源;
