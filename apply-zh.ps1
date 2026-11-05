@@ -46,15 +46,53 @@ $appDir = Join-Path $root 'resources\app'
 $outDir = Join-Path $appDir 'out'
 Write-Host "[*] Cursor 安装目录: $root"
 
+# ---------- 0. 版本检测:Cursor 更新后旧 .zhorig 备份全部作废 ----------
+# 旧备份存的是上一版本的代码,若被重放会造成新旧代码混用 -> 白屏。
+# 用版本标记文件检测:版本变化时删除所有 .zhorig,重新按当前版本备份。
+$verMarker = Join-Path $appDir '.zhpatch-version'
+$curVer = ''
+foreach ($vf in @((Join-Path $appDir 'product.json'), (Join-Path $appDir 'package.json'))) {
+    if (Test-Path $vf) {
+        try { $curVer = (Get-Content $vf -Raw | ConvertFrom-Json).version; if ($curVer) { break } } catch {}
+    }
+}
+$prevVer = if (Test-Path $verMarker) { ([IO.File]::ReadAllText($verMarker, $utf8)).Trim() } else { '' }
+if ($curVer -and $prevVer -and $curVer -ne $prevVer) {
+    Write-Host "[!] 检测到 Cursor 已更新 ($prevVer -> $curVer),清除旧版本备份"
+    foreach ($d in @((Join-Path $appDir 'molten\dist'), (Join-Path $appDir 'out'), "$env:APPDATA\Cursor\clp")) {
+        Get-ChildItem $d -Recurse -Filter '*.zhorig' -ErrorAction SilentlyContinue |
+            ForEach-Object { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue }
+    }
+    $az = "$env:USERPROFILE\.cursor\argv.json.zhorig"
+    if (Test-Path $az) { Remove-Item $az -Force }
+    Get-Item "$env:USERPROFILE\.cursor\extensions\ms-ceintl.vscode-language-pack-zh-hans-*\translations\main.i18n.json.zhorig" -ErrorAction SilentlyContinue |
+        ForEach-Object { Remove-Item $_.FullName -Force }
+    Write-Host '[+] 旧版本 .zhorig 备份已清除'
+}
+
 function Backup-Once($f) {
     if ((Test-Path $f) -and -not (Test-Path "$f.zhorig")) { Copy-Item $f "$f.zhorig" }
 }
 
-# ---------- 1. workbench 内核层:替换 nls.messages.json ----------
-# VS Code 1.128: locale=en 时直接回退内嵌英文,不读此文件;
-# 但 locale=zh-cn 且无语言包时会回退读它 -> 替换保证无包用户也能汉化。
+# ---------- 1. workbench 内核层:按当前安装版本实时生成中文 nls 数组 ----------
+# 运行时生成保证数组与 nls.keys.json 完全对齐,Cursor 更新后也不会索引错位(白屏主因)。
 $nlsDst = Join-Path $outDir 'nls.messages.json'
-$nlsSrc = Join-Path $pkg 'nls.messages.zh.json'
+$nlsSrc = Join-Path $env:TEMP 'cursor-nls-zh.json'
+$built = $false
+try {
+    node (Join-Path $pkg 'build-nls.mjs') $outDir (Join-Path $pkg 'nls-zh-map.json') `
+        (Join-Path $pkg 'nls-en-zh-dict.json') $nlsSrc 2>&1 | ForEach-Object { Write-Host "[*] $_" }
+    $built = (Test-Path $nlsSrc) -and ((Get-Item $nlsSrc).Length -gt 10000)
+} catch { $built = $false }
+if (-not $built) {
+    Write-Host '[!] 实时生成失败,回退使用包内预置 nls.messages.zh.json'
+    $nlsSrc = Join-Path $pkg 'nls.messages.zh.json'
+    try {
+        $mLen = (node -e "console.log(JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')).length)" (Join-Path $outDir 'nls.messages.json'))
+        $zLen = (node -e "console.log(JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')).length)" $nlsSrc)
+        if ($mLen -ne $zLen) { Write-Host "[!] 警告:预置数组长度($zLen)与当前安装($mLen)不一致,部分条目可能错位,建议更新汉化包" }
+    } catch {}
+}
 $cur = [IO.File]::ReadAllText($nlsDst, $utf8)
 if ($cur.Contains('更多操作...') -and $cur.Contains('确定')) {
     Write-Host '[=] nls.messages.json 已是中文,跳过'
@@ -174,6 +212,7 @@ $ok = $true
 $chk = [IO.File]::ReadAllText($nlsDst, $utf8)
 if (-not $chk.Contains('更多操作...')) { $ok = $false; Write-Host '[!] 校验失败: nls.messages.json 未汉化' }
 if ($ok) {
+    if ($curVer) { [IO.File]::WriteAllText($verMarker, $curVer, $utf8) }
     Write-Host ''
     Write-Host '==== 汉化完成 ===='
     Write-Host '完全退出并重启 Cursor(顶部菜单栏由主进程在启动时加载,'
